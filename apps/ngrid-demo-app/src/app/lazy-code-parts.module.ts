@@ -137,6 +137,11 @@ export const ELEMENT_MODULE_PATHS_AS_ROUTES = [
     loadChildren: () => import('@pebula/apps/ngrid-examples/features/grid/virtual-scroll/virtual-scroll.module').then( m => m.VirtualScrollExampleModule ),
   },
   {
+    path: 'features-grid-infinite-scroll.module',
+    pathMatch: 'full',
+    loadChildren: () => import('@pebula/apps/ngrid-examples/features/grid/infinite-scroll/infinite-scroll.module').then( m => m.InfiniteScrollExampleModule ),
+  },
+  {
     path: 'grid-grid-filler.module',
     pathMatch: 'full',
     loadChildren: () => import('@pebula/apps/ngrid-examples/features/grid/grid-filler/grid-filler.module').then( m => m.GridFillerExampleModule ),
@@ -218,11 +223,6 @@ export const ELEMENT_MODULE_PATHS_AS_ROUTES = [
     path: 'stories-column-header-menu.module',
     pathMatch: 'full',
     loadChildren: () => import('@pebula/apps/ngrid-examples/stories/column-header-menu/column-header-menu.module').then( m => m.ColumnHeaderMenuExampleModule ),
-  },
-  {
-    path: 'stories-infinite-scroll.module',
-    pathMatch: 'full',
-    loadChildren: () => import('@pebula/apps/ngrid-examples/stories/infinite-scroll/infinite-scroll.module').then( m => m.InfiniteScrollExampleModule ),
   },
   {
     path: 'extending-ngrid-copy-selection.module',

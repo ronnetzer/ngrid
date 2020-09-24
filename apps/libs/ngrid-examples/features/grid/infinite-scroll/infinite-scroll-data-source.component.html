@@ -1,0 +1,7 @@
+<pbl-ngrid [dataSource]="ds" [columns]="columns">
+  <div *pblNgridCellDef="'id'; value as value">
+    <img *ngIf="value === undefined" src="https://raw.githubusercontent.com/ag-grid/ag-grid/master/grid-packages/ag-grid-docs/src/images/loading.gif">
+    <span *ngIf="value !== undefined" >{{value}}</span>
+  </div>
+  <mat-progress-bar *ngIf="loading" mode="indeterminate"></mat-progress-bar>
+</pbl-ngrid>

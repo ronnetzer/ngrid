@@ -22,6 +22,13 @@ export {
 } from './lib/data-source/index';
 
 export {
+  createInfiniteScrollDS,
+  PblInfiniteScrollDsOptions,
+  PblInfiniteScrollTriggerChangedEvent,
+  INFINITE_SCROLL_DEFFERED_ROW,
+} from './lib/infinite-scroll-data-source/index';
+
+export {
   PEB_NGRID_CONFIG, PblNgridConfig, PblNgridConfigService,
 
   PblColumn, PblMetaColumn, PblColumnGroup, PblColumnFactory, COLUMN, columnFactory,
