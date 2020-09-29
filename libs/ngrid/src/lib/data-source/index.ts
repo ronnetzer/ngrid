@@ -5,7 +5,7 @@ export {
   PblDataSourceTriggerChangedEvent,
   PblDataSourceAdapterProcessedResult,
 } from './data-source-adapter.types';
-export { PblDataSourceAdapter } from './data-source-adapter';
+export { PblDataSourceAdapter, SKIP_SOURCE_CHANGING_EVENT } from './data-source-adapter';
 export {
   PblNgridSortInstructions,
   PblNgridSortDefinition,

@@ -13,6 +13,7 @@ export interface PblInfiniteScrollDsOptions {
   minBlockSize?: number;
 
   initialDataSourceSize?: number;
+
 }
 
 export interface PblInfiniteScrollTriggerChangedEvent<T = any> extends PblDataSourceTriggerChangedEvent<T> {
@@ -54,4 +55,6 @@ export interface PblInfiniteScrollTriggerChangedEvent<T = any> extends PblDataSo
    * Where 1 means scrolling down and -1 means scrolling up.
    */
   direction: -1 | 1;
+
+  setMinBlockSize(value: number): void;
 }

@@ -1,25 +1,26 @@
-import { from, isObservable, of } from 'rxjs';
-import { map, tap, finalize } from 'rxjs/operators';
-import { PblDataSourceTriggerChangedEvent, DataSourceOf, PblDataSource } from '../data-source/index';
+import { from, isObservable, Observable, of } from 'rxjs';
+import { tap, finalize } from 'rxjs/operators';
+import { PblDataSourceTriggerChangedEvent, DataSourceOf, PblDataSource, SKIP_SOURCE_CHANGING_EVENT } from '../data-source/index';
 import { PblInfiniteScrollFactoryHandlers, PblInfiniteScrollDsOptions, PblInfiniteScrollTriggerChangedEvent } from './infinite-scroll-datasource.types';
 import { PblInfiniteScrollDataSourceCache } from './infinite-scroll-datasource.cache';
 import { INFINITE_SCROLL_DEFFERED_ROW } from './infinite-scroll-deffered-row';
 import { PblInfiniteScrollDataSourceTriggerRuntime, PblInfiniteScrollDataSourceTriggerRuntimeContext } from './infinite-scroll-datasource.trigger-runtime';
+import { normalizeOptions } from './utils';
 
-function normalizeOptions(rawOptions: PblInfiniteScrollDsOptions) {
-  const options: PblInfiniteScrollDsOptions = rawOptions || {};
+class UpdatePlaceholder<T> {
+  public returnSelf: boolean;
+  constructor (public result: false | Observable<T[]>, public event?: PblInfiniteScrollTriggerChangedEvent<any>) { }
 
-  options.minBlockSize = Number(options.minBlockSize);
-  if (Number.isNaN(options.minBlockSize)) {
-    options.minBlockSize = 0;
+  shouldUpdate(ds: PblDataSource<T>) {
+    return this.event.totalLength > this.event.toRow && ds.source[ds.source.length - 1] !== INFINITE_SCROLL_DEFFERED_ROW;
   }
 
-  options.initialDataSourceSize = Number(options.initialDataSourceSize);
-  if (Number.isNaN(options.initialDataSourceSize)) {
-    options.initialDataSourceSize = 0;
+  updatePlaceholders(ds: PblDataSource<T>, minBlockSize: number) {
+    const len = Math.min(ds.source.length + minBlockSize - 1, this.event.totalLength);
+    for (let i = ds.source.length; i < len; i++) {
+      ds.source[i] = INFINITE_SCROLL_DEFFERED_ROW;
+    }
   }
-
-  return options;
 }
 
 class PblInfiniteScrollDSContext<T, TData = any> implements PblInfiniteScrollDataSourceTriggerRuntimeContext<T, TData> {
@@ -32,8 +33,13 @@ class PblInfiniteScrollDSContext<T, TData = any> implements PblInfiniteScrollDat
   private lastEvent: PblInfiniteScrollTriggerChangedEvent<TData>;
   private triggerRuntime: PblInfiniteScrollDataSourceTriggerRuntime<T, TData>;
 
+  private updatePlaceholder: UpdatePlaceholder<T>;
+
   constructor(private internalHandlers: PblInfiniteScrollFactoryHandlers<T, TData>, options: PblInfiniteScrollDsOptions | undefined) {
     this.options = normalizeOptions(options);
+    if (this.options.initialDataSourceSize > 0) {
+      this.totalLength = this.options.initialDataSourceSize;
+    }
   }
 
   onCreated(dataSource: PblDataSource<T, TData>): void {
@@ -45,21 +51,63 @@ class PblInfiniteScrollDSContext<T, TData = any> implements PblInfiniteScrollDat
     }
   }
 
-  onTrigger(event: PblDataSourceTriggerChangedEvent<TData>): false | DataSourceOf<T> {
-    if (this.triggerRuntime && this.triggerRuntime.shouldHandleTrigger(event)) {
-      const onTriggerResult = this.triggerRuntime.onTrigger(event);
-      if (onTriggerResult === false) {
-        this.triggerRuntime = undefined;
-        return false;
-      } else {
-        return onTriggerResult
+  onTrigger(rawEvent: PblDataSourceTriggerChangedEvent<TData>): false | DataSourceOf<T> {
+    rawEvent[SKIP_SOURCE_CHANGING_EVENT] = true;
+    if (this.updatePlaceholder) {
+      const updatePlaceholder = this.updatePlaceholder;
+      this.updatePlaceholder = undefined;
+      if (rawEvent.data.changed && (rawEvent.data.curr as any) === updatePlaceholder && updatePlaceholder.result !== false) {
+        return updatePlaceholder.result
           .pipe(finalize(() => {
-            setTimeout(() => this.ds.hostGrid._cdkTable.syncRows('data', true), 50);
+            setTimeout(() => this.ds.hostGrid._cdkTable.syncRows('data', true), 16);
             this.triggerRuntime = undefined;
           }));
       }
+    }
+    if (rawEvent.data.changed && rawEvent.data.curr instanceof UpdatePlaceholder) {
+      if (rawEvent.data.curr.returnSelf) {
+        return of(this.ds.source)
+          .pipe(finalize(() => {
+            setTimeout(() => this.ds.hostGrid._cdkTable.syncRows('data', true), 0);
+          }));
+      } else {
+        return false;
+      }
+    }
+
+    if (this.triggerRuntime && this.triggerRuntime.shouldHandleTrigger(rawEvent)) {
+      if (this.ds.hostGrid.viewport.isScrolling) {
+        this.xyz(rawEvent);
+        return false;
+      }
+
+      let update = this.invokeRuntimeOnTrigger(rawEvent);
+      if (update.result === false) {
+        this.triggerRuntime = undefined;
+        return false;
+      } else {
+        if (update.shouldUpdate(this.ds)) {
+          for (let i = this.ds.source.length, len = Math.min(this.ds.source.length + this.options.minBlockSize - 1, update.event.totalLength); i < len; i++) {
+            this.ds.source[i] = INFINITE_SCROLL_DEFFERED_ROW;
+          }
+          this.updatePlaceholder = update;
+          return of(this.ds.source)
+            .pipe(finalize(() => {
+              setTimeout(() => this.ds.hostGrid._cdkTable.syncRows('data', true) , 16);
+              this.triggerRuntime = undefined;
+              this.ds.refresh(this.updatePlaceholder as any);
+            }));
+        } else {
+          return update.result
+            .pipe(finalize(() => {
+              setTimeout(() => this.ds.hostGrid._cdkTable.syncRows('data', true) , 16);
+              this.triggerRuntime = undefined;
+            }));
+        }
+      }
     } else {
-      const result = this.internalHandlers.onTrigger(this.lastEvent || (this.lastEvent = this.toInfiniteScrollChangeEvent(event)));
+      rawEvent[SKIP_SOURCE_CHANGING_EVENT] = false;
+      const result = this.internalHandlers.onTrigger(this.lastEvent || (this.lastEvent = this.createChangeEvent(rawEvent)));
       if (!result) {
         return result;
       }
@@ -90,18 +138,70 @@ class PblInfiniteScrollDSContext<T, TData = any> implements PblInfiniteScrollDat
     }
   }
 
-  private toInfiniteScrollChangeEvent(event: PblDataSourceTriggerChangedEvent<TData>): PblInfiniteScrollTriggerChangedEvent<TData> {
+  private xyz(rawEvent: PblDataSourceTriggerChangedEvent<TData>) {
+    const { event } = this.tryGetInfiniteEvent(rawEvent);
+    if (event !== false) {
+      const uph = new UpdatePlaceholder(false, event);
+      if (uph.shouldUpdate(this.ds)) {
+        uph.updatePlaceholders(this.ds, this.options.minBlockSize);
+      }
+      uph.returnSelf = true;
+      this.ds.refresh(uph as any);
+    }
+    setTimeout(() => {
+      const update = this.invokeRuntimeOnTrigger(rawEvent);
+      if (update.result === false) {
+        update.result = of(this.ds.source);
+      }
+      this.updatePlaceholder = update;
+      this.ds.refresh(this.updatePlaceholder as any);
+    }, 16);
+  }
+
+  private invokeRuntimeOnTrigger(rawEvent: PblDataSourceTriggerChangedEvent<TData>) {
+    const { newBlock, event } = this.tryGetInfiniteEvent(rawEvent);
+    if (event === false) {
+      return new UpdatePlaceholder<T>(false);
+    } else {
+      const result = this.triggerRuntime.onTrigger(event, newBlock[0] === 0);
+      return new UpdatePlaceholder<T>(result, event);
+    }
+  }
+
+  private tryGetInfiniteEvent(rawEvent: PblDataSourceTriggerChangedEvent<TData>) {
+    const renderEnd = this.ds.renderStart + this.ds.renderLength;
+    const newBlock = this.cache.matchNewBlock(this.ds.renderStart, this.totalLength ? Math.min(renderEnd, this.totalLength) : renderEnd);
+    if (!newBlock) {
+      return { newBlock, event: false as const };
+    }
+
+    let event = this.createChangeEvent(rawEvent, newBlock);
+    if (!event) {
+      return { newBlock, event: false as const };
+    }
+
     event.updateTotalLength = (totalLength: number) => { this.totalLength = totalLength; };
+    return { newBlock, event };
+  }
 
-    const offset = Math.max(this.ds.renderLength, this.options.minBlockSize) - 1;
-    const fromRow = this.ds.length;
-    const toRow = fromRow + offset;
+  private createChangeEvent(event: PblDataSourceTriggerChangedEvent<TData>, blockMatchResult?: ReturnType<PblInfiniteScrollDataSourceCache<T>['matchNewBlock']>): PblInfiniteScrollTriggerChangedEvent<TData> {
+    event.updateTotalLength = (totalLength: number) => { this.totalLength = totalLength; };
+    (event as PblInfiniteScrollTriggerChangedEvent).setMinBlockSize = value => this.options.minBlockSize = value;
 
-    (event as PblInfiniteScrollTriggerChangedEvent).totalLength = this.totalLength || 0;
-    (event as PblInfiniteScrollTriggerChangedEvent).direction = 1;
-    (event as PblInfiniteScrollTriggerChangedEvent).fromRow = fromRow;
-    (event as PblInfiniteScrollTriggerChangedEvent).offset = offset + 1;
-    (event as PblInfiniteScrollTriggerChangedEvent).toRow = toRow;
+    if (blockMatchResult) {
+      return PblInfiniteScrollDataSourceTriggerRuntime.createInfiniteScrollChangeEvent(event, this, ...blockMatchResult);
+    } else {
+      const offset = Math.max(this.ds.renderLength, this.options.minBlockSize) - 1;
+      const fromRow = this.ds.length;
+      const toRow = fromRow + offset;
+
+      (event as PblInfiniteScrollTriggerChangedEvent).totalLength = this.totalLength || 0;
+      (event as PblInfiniteScrollTriggerChangedEvent).direction = 1;
+      (event as PblInfiniteScrollTriggerChangedEvent).fromRow = fromRow;
+      (event as PblInfiniteScrollTriggerChangedEvent).offset = offset + 1;
+      (event as PblInfiniteScrollTriggerChangedEvent).toRow = toRow;
+    }
+
     return event as PblInfiniteScrollTriggerChangedEvent<TData>;
   }
 }

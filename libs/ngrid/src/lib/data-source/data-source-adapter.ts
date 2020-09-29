@@ -25,6 +25,8 @@ const SOURCE_CHANGING_TOKEN = {};
 
 const DEFAULT_INITIAL_CACHE_STATE: PblDataSourceTriggerCache<any> = { filter: EMPTY, sort: EMPTY, pagination: {}, data: EMPTY };
 
+export const SKIP_SOURCE_CHANGING_EVENT = Symbol('SKIP_SOURCE_CHANGING_EVENT');
+
 /**
  * An adapter that handles changes
  */
@@ -326,11 +328,14 @@ export class PblDataSourceAdapter<T = any, TData = any> {
    * a dead-end observable is returned (observable that will never emit).
    */
   private runHandle(event: PblDataSourceTriggerChangedEvent<TData>): Observable<T[]> {
-    this._onSourceChange$.next(SOURCE_CHANGING_TOKEN);
 
     const result = this.sourceFactory(event);
     if (result === false) {
       return of(false).pipe(filter( () => false )) as any; // stop emissions if got false.
+    }
+
+    if (event[SKIP_SOURCE_CHANGING_EVENT] !== true) {
+      this._onSourceChange$.next(SOURCE_CHANGING_TOKEN);
     }
 
     const obs: Observable<T[]> = isObservable(result)

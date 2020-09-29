@@ -1,6 +1,7 @@
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { PblNgridModule } from '@pebula/ngrid';
+import { PblNgridTargetEventsModule } from '@pebula/ngrid/target-events';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 
 import { BindNgModule } from '@pebula/apps/shared';
@@ -14,7 +15,7 @@ import { InfiniteScrollDataSourceExample } from './infinite-scroll-data-source.c
     CommonModule,
     ExampleCommonModule,
     MatProgressBarModule,
-    PblNgridModule,
+    PblNgridModule, PblNgridTargetEventsModule,
   ],
   exports: [ InfiniteScrollExample, InfiniteScrollDataSourceExample ],
   entryComponents: [InfiniteScrollDataSourceExample],

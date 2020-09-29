@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ViewEncapsulation } from '@angular/core';
-import { createDS, columnFactory, PblNgridCellContext } from '@pebula/ngrid';
+import { createDS, columnFactory, PblNgridCellContext, createInfiniteScrollDS } from '@pebula/ngrid';
 
 import { Person, DemoDataSource } from '@pebula/apps/shared-data';
 import { Example } from '@pebula/apps/shared';
@@ -22,7 +22,23 @@ export class CellEditGlobalTriggerExample {
       { prop: 'lead', editable: true },
     )
     .build();
-  ds = createDS<Person>().onTrigger( () => this.datasource.getPeople(0, 500) ).create();
+  ds = createInfiniteScrollDS<Person>()
+  .withInfiniteScrollOptions({
+    minBlockSize: 50,
+    initialDataSourceSize: 500,
+  })
+  .onTrigger( (event) => {
+    if (!event.isInfiniteScroll) {
+    event.updateTotalLength(500); // Assume we got a pagination object saying we have 1000 items
+    return this.datasource.getPeople(0, 50);
+  } else {
+    const total = event.fromRow + event.offset;
+    return this.datasource.getPeople(500 + Math.random() * 1000, total)
+      .then( people => {
+        return people.slice(event.fromRow, total); });
+    }
+  }).create();
+  // createDS<Person>().onTrigger( () => this.datasource.getPeople(0, 500) ).create();
 
   constructor(private datasource: DemoDataSource) { }
 

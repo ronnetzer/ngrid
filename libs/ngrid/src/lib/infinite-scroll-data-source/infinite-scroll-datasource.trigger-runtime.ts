@@ -34,8 +34,6 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
   private get cache(): PblInfiniteScrollDataSourceCache<T, TData> { return this.context.cache; }
   private get options(): PblInfiniteScrollDsOptions { return this.context.options; }
 
-  private updateTotalLength = (totalLength: number) => { this.context.totalLength = totalLength; };
-
   private constructor(private context: PblInfiniteScrollDataSourceTriggerRuntimeContext<T, TData>,
                       private onTriggerCb: (event: PblDataSourceTriggerChangedEvent<TData>) => (false | DataSourceOf<T>)) {
     setTimeout(() => this.ds.refresh(this as any), 16);
@@ -48,51 +46,23 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
   onRenderedDataChanged(): void {
   }
 
-  onTrigger(event: PblDataSourceTriggerChangedEvent<TData>): false | Observable<T[]> {
+  onTrigger(event: PblInfiniteScrollTriggerChangedEvent<TData>, cacheReplace: boolean): false | Observable<T[]> {
 
-    const fn = () => {
-      const renderEnd = this.ds.renderStart + this.ds.renderLength;
-      const newBlock = this.cache.matchNewBlock(this.ds.renderStart, this.context.totalLength ? Math.min(renderEnd, this.context.totalLength) : renderEnd);
-      if (!newBlock) {
-        return false;
-      }
-
-      const infiniteScrollEvent = this.toInfiniteScrollChangeEvent(event, ...newBlock);
-      if (!infiniteScrollEvent) {
-        return false;
-      }
-
-      const result = this.onTriggerCb(infiniteScrollEvent);
-      if (result === false) {
-        return result;
-      }
-
-      const obs = Array.isArray(result)
-        ? of(result)
-        : isObservable(result)
-          ? result
-          : from(result)
-      ;
-
-      return obs.pipe(
-        map( values => this.updateCache(infiniteScrollEvent, values, newBlock[0] === 0) ),
-      );
+    const result = this.onTriggerCb(event);
+    if (result === false) {
+      return result;
     }
 
-    if (this.ds.hostGrid.viewport.isScrolling) {
-      return this.ds.hostGrid.viewport.scrolling
-        .pipe(
-          debounceTime(28),
-          filter( s => s === 0),
-          take(1),
-          switchMap( () => {
-            const result = fn();
-            return result === false ? of(this.ds.source) : result;
-          })
-        )
-    } else {
-      return fn();
-    }
+    const obs = Array.isArray(result)
+      ? of(result)
+      : isObservable(result)
+        ? result
+        : from(result)
+    ;
+
+    return obs.pipe(
+      map( values => this.updateCache(event, values, cacheReplace) ),
+    );
   }
 
   private updateCache(event: PblInfiniteScrollTriggerChangedEvent<TData>, values: T[], replace: boolean) {
@@ -136,11 +106,12 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
    * Will return undefined when the event and metadata are invalid, currently only occur when there is a total length
    * limit and the start (fromRow) is after that limit.
    */
-  private toInfiniteScrollChangeEvent(event: PblDataSourceTriggerChangedEvent<TData>,
-                                      direction: -1 | 0 | 1,
-                                      start: number,
-                                      end: number): PblInfiniteScrollTriggerChangedEvent<TData> | undefined {
-    let offset = Math.max(this.ds.renderLength, this.options.minBlockSize);
+  public static createInfiniteScrollChangeEvent<T, TData = any>(event: PblDataSourceTriggerChangedEvent<TData>,
+                                                                context: PblInfiniteScrollDataSourceTriggerRuntimeContext<T, TData>,
+                                                                direction: -1 | 0 | 1,
+                                                                start: number,
+                                                                end: number): PblInfiniteScrollTriggerChangedEvent<TData> | undefined {
+    let offset = Math.max(context.ds.renderLength, context.options.minBlockSize);
     let fromRow: number;
     let toRow: number;
     switch (direction) {
@@ -156,7 +127,7 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
           break;
     }
 
-    const totalLength = this.context.totalLength || 0;
+    const totalLength = context.totalLength || 0;
     if (totalLength) {
       if (toRow >= totalLength) {
         if (fromRow >= totalLength) {
@@ -170,7 +141,6 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
       }
     }
 
-    event.updateTotalLength = this.updateTotalLength;
     (event as PblInfiniteScrollTriggerChangedEvent).isInfiniteScroll = true;
 
     (event as PblInfiniteScrollTriggerChangedEvent).totalLength = totalLength;

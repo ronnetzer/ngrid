@@ -49,13 +49,12 @@ export class PblNgridRowComponent<T = any> extends CdkRow implements OnChanges, 
       if (! (this.rowRenderIndex >= 0) ) {
         this.getRend();
       }
-      if (this.context = this.extApi.contextApi.rowContext(this.rowRenderIndex)) {
-        this.el.nativeElement.setAttribute('row-id', this.context.dataIndex as any);
-        this.el.nativeElement.setAttribute('row-key', this.context.identity);
+      this.context = this.extApi.contextApi.rowContext(this.rowRenderIndex);
+      this.el.nativeElement.setAttribute('row-id', this.context.dataIndex as any);
+      this.el.nativeElement.setAttribute('row-key', this.context.identity);
 
-        if (this.grid.rowClassUpdate && this.grid.rowClassUpdateFreq === 'item') {
-          this.updateHostClass();
-        }
+      if (this.grid.rowClassUpdate && this.grid.rowClassUpdateFreq === 'item') {
+        this.updateHostClass();
       }
     }
   }
