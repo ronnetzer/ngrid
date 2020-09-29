@@ -5,27 +5,39 @@ import { PblInfiniteScrollDataSourceCache } from './infinite-scroll-datasource.c
 import { PblInfiniteScrollFactoryHandlers, PblInfiniteScrollDsOptions, PblInfiniteScrollTriggerChangedEvent } from './infinite-scroll-datasource.types';
 import { INFINITE_SCROLL_DEFFERED_ROW } from './infinite-scroll-deffered-row';
 
+export interface PblInfiniteScrollDataSourceTriggerRuntimeContext<T, TData = any> {
+  ds: PblDataSource<T, TData>;
+  cache: PblInfiniteScrollDataSourceCache<T, TData>;
+  options: PblInfiniteScrollDsOptions;
+  totalLength: number;
+}
+
 export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
 
-  static tryCreate<T, TData = any>(ds: PblDataSource<T, TData>,
-                                   cache: PblInfiniteScrollDataSourceCache<T, TData>,
-                                   options: PblInfiniteScrollDsOptions,
-                                   onTrigger: (event: PblDataSourceTriggerChangedEvent<TData>) => (false | DataSourceOf<T>),
-                                   totalLength: number): PblInfiniteScrollDataSourceTriggerRuntime<T, TData> | undefined {
+  static tryCreate<T, TData = any>(context: PblInfiniteScrollDataSourceTriggerRuntimeContext<T, TData>,
+                                   onTrigger: (event: PblDataSourceTriggerChangedEvent<TData>) => (false | DataSourceOf<T>)): PblInfiniteScrollDataSourceTriggerRuntime<T, TData> | undefined {
+
+    if (context.totalLength && context.ds.renderStart > context.totalLength) {
+      return;
+    }
+
+    const { ds, cache, totalLength } = context;
     const renderEnd = ds.renderStart + ds.renderLength;
     const newBlock = cache.matchNewBlock(ds.renderStart, totalLength ? Math.min(renderEnd, totalLength) : renderEnd);
-    if (!newBlock) {
-      return;
-    } else {
-      return new PblInfiniteScrollDataSourceTriggerRuntime<T, TData>(ds, cache, options, onTrigger, totalLength);
+
+    if (!!newBlock) {
+      return new PblInfiniteScrollDataSourceTriggerRuntime<T, TData>(context, onTrigger);
     }
   }
 
-  private constructor(private ds: PblDataSource<T, TData>,
-                      private cache: PblInfiniteScrollDataSourceCache<T, TData>,
-                      private options: PblInfiniteScrollDsOptions,
-                      private onTriggerCb: (event: PblDataSourceTriggerChangedEvent<TData>) => (false | DataSourceOf<T>),
-                      private totalLength: number) {
+  private get ds(): PblDataSource<T, TData> { return this.context.ds; }
+  private get cache(): PblInfiniteScrollDataSourceCache<T, TData> { return this.context.cache; }
+  private get options(): PblInfiniteScrollDsOptions { return this.context.options; }
+
+  private updateTotalLength = (totalLength: number) => { this.context.totalLength = totalLength; };
+
+  private constructor(private context: PblInfiniteScrollDataSourceTriggerRuntimeContext<T, TData>,
+                      private onTriggerCb: (event: PblDataSourceTriggerChangedEvent<TData>) => (false | DataSourceOf<T>)) {
     setTimeout(() => this.ds.refresh(this as any), 16);
   }
 
@@ -40,12 +52,15 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
 
     const fn = () => {
       const renderEnd = this.ds.renderStart + this.ds.renderLength;
-      const newBlock = this.cache.matchNewBlock(this.ds.renderStart, this.totalLength ? Math.min(renderEnd, this.totalLength) : renderEnd);
+      const newBlock = this.cache.matchNewBlock(this.ds.renderStart, this.context.totalLength ? Math.min(renderEnd, this.context.totalLength) : renderEnd);
       if (!newBlock) {
         return false;
       }
 
       const infiniteScrollEvent = this.toInfiniteScrollChangeEvent(event, ...newBlock);
+      if (!infiniteScrollEvent) {
+        return false;
+      }
 
       const result = this.onTriggerCb(infiniteScrollEvent);
       if (result === false) {
@@ -67,7 +82,7 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
     if (this.ds.hostGrid.viewport.isScrolling) {
       return this.ds.hostGrid.viewport.scrolling
         .pipe(
-          debounceTime(100),
+          debounceTime(28),
           filter( s => s === 0),
           take(1),
           switchMap( () => {
@@ -116,21 +131,54 @@ export class PblInfiniteScrollDataSourceTriggerRuntime<T, TData = any> {
     }
   }
 
-  private toInfiniteScrollChangeEvent(event: PblDataSourceTriggerChangedEvent<TData>, direction: -1 | 0 | 1, start: number, end: number): PblInfiniteScrollTriggerChangedEvent<TData> {
-    event.updateTotalLength = (totalLength: number) => { this.totalLength = totalLength; };
+  /**
+   * Return the infinite scroll change event interface from an existing event and additional metadata.
+   * Will return undefined when the event and metadata are invalid, currently only occur when there is a total length
+   * limit and the start (fromRow) is after that limit.
+   */
+  private toInfiniteScrollChangeEvent(event: PblDataSourceTriggerChangedEvent<TData>,
+                                      direction: -1 | 0 | 1,
+                                      start: number,
+                                      end: number): PblInfiniteScrollTriggerChangedEvent<TData> | undefined {
+    let offset = Math.max(this.ds.renderLength, this.options.minBlockSize);
+    let fromRow: number;
+    let toRow: number;
+    switch (direction) {
+      case -1:
+        fromRow = Math.max(0, end - (offset - 1));
+        toRow = end;
+        break;
+      case 0:
+          direction = 1;
+      case 1:
+          fromRow = start;
+          toRow = start + offset - 1;
+          break;
+    }
+
+    const totalLength = this.context.totalLength || 0;
+    if (totalLength) {
+      if (toRow >= totalLength) {
+        if (fromRow >= totalLength) {
+          return undefined;
+        }
+        toRow = totalLength - 1;
+        offset = (toRow - fromRow) + 1;
+      }
+      if (direction === 1 && toRow === totalLength - 1) {
+        (event as PblInfiniteScrollTriggerChangedEvent).isLastBlock = true;
+      }
+    }
+
+    event.updateTotalLength = this.updateTotalLength;
     (event as PblInfiniteScrollTriggerChangedEvent).isInfiniteScroll = true;
 
-    if (direction === 0) {
-      direction = 1;
-    }
-    const offset = Math.max(this.ds.renderLength, this.options.minBlockSize) - 1;
-    const fromRow = direction === 1 ? start : Math.max(0, end - offset);
-    const toRow = direction === 1 ? start + offset : end;
-
+    (event as PblInfiniteScrollTriggerChangedEvent).totalLength = totalLength;
     (event as PblInfiniteScrollTriggerChangedEvent).direction = direction;
     (event as PblInfiniteScrollTriggerChangedEvent).fromRow = fromRow;
-    (event as PblInfiniteScrollTriggerChangedEvent).offset = offset + 1;
+    (event as PblInfiniteScrollTriggerChangedEvent).offset = offset;
     (event as PblInfiniteScrollTriggerChangedEvent).toRow = toRow;
+
     return event as PblInfiniteScrollTriggerChangedEvent<TData>;
   }
 }

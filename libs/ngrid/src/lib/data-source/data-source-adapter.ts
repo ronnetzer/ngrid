@@ -142,7 +142,7 @@ export class PblDataSourceAdapter<T = any, TData = any> {
 
     const hasCustomBehavior = CUSTOM_BEHAVIOR_TRIGGER_KEYS.some( key => !!this.config[key] );
 
-    return combineLatest(combine[0], combine[1], combine[2], combine[3])
+    return combineLatest([combine[0], combine[1], combine[2], combine[3]])
       .pipe(
         // Defer to next loop cycle, until no more incoming.
         // We use an async schedular here (instead of asapSchedular) because we want to have the largest debounce window without compromising integrity

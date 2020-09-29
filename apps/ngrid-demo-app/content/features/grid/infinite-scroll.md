@@ -29,7 +29,7 @@ Infinite scrolling & Virtual scrolling are often mis-understood:
 - **Virtual scroll** enable the display of large datasets in the grid
 - **Infinite scroll** enable seamless lazy loading of additional data rows into the grid  
 
-Usually you will use both together, especially when using infinite scroll to add row (as opposed to replacing rows)
+Usually you will use both together, especially when using infinite scroll to add rows (as opposed to replacing rows)
 
 ## Creating Infinite Scroll
 

@@ -54,18 +54,24 @@ export class PblInfiniteScrollDataSourceCache<T, TData = any> {
       return [1, start, end];
     }
 
+    if (start >= this.cached.start && end <= this.cached.end) {
+      return undefined;
+    }
+
     if (start < this.cached.start && end >= this.cached.start - 1) {
       return [-1, start, this.cached.start -1];
     }
     if (end > this.cached.end && start <= this.cached.end + 1) {
       return [1, this.cached.end + 1, end];
     }
-    if (end < this.cached.start && start < end) {
-      return [0, start, end];
-    }
-    if (start > this.cached.end && end > start) {
-      return [0, start, end];
-    }
+
+    return [0, start, end];
+    // if (end < this.cached.start && start < end) {
+    //   return [0, start, end];
+    // }
+    // if (start > this.cached.end && end > start) {
+    //   return [0, start, end];
+    // }
   }
 
   set(event: PblInfiniteScrollTriggerChangedEvent<TData>) {

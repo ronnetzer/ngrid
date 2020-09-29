@@ -4,7 +4,7 @@ import { PblDataSourceTriggerChangedEvent, DataSourceOf, PblDataSource } from '.
 import { PblInfiniteScrollFactoryHandlers, PblInfiniteScrollDsOptions, PblInfiniteScrollTriggerChangedEvent } from './infinite-scroll-datasource.types';
 import { PblInfiniteScrollDataSourceCache } from './infinite-scroll-datasource.cache';
 import { INFINITE_SCROLL_DEFFERED_ROW } from './infinite-scroll-deffered-row';
-import { PblInfiniteScrollDataSourceTriggerRuntime } from './infinite-scroll-datasource.trigger-runtime';
+import { PblInfiniteScrollDataSourceTriggerRuntime, PblInfiniteScrollDataSourceTriggerRuntimeContext } from './infinite-scroll-datasource.trigger-runtime';
 
 function normalizeOptions(rawOptions: PblInfiniteScrollDsOptions) {
   const options: PblInfiniteScrollDsOptions = rawOptions || {};
@@ -22,14 +22,14 @@ function normalizeOptions(rawOptions: PblInfiniteScrollDsOptions) {
   return options;
 }
 
-class PblInfiniteScrollDSContext<T, TData = any> {
+class PblInfiniteScrollDSContext<T, TData = any> implements PblInfiniteScrollDataSourceTriggerRuntimeContext<T, TData> {
 
-  private ds: PblDataSource<T, TData>;
-  private options: PblInfiniteScrollDsOptions;
+  public ds: PblDataSource<T, TData>;
+  public options: PblInfiniteScrollDsOptions;
+  public totalLength: number;
+  public cache: PblInfiniteScrollDataSourceCache<T, TData>;
 
-  private totalLength: number;
   private lastEvent: PblInfiniteScrollTriggerChangedEvent<TData>;
-  private cache: PblInfiniteScrollDataSourceCache<T, TData>;
   private triggerRuntime: PblInfiniteScrollDataSourceTriggerRuntime<T, TData>;
 
   constructor(private internalHandlers: PblInfiniteScrollFactoryHandlers<T, TData>, options: PblInfiniteScrollDsOptions | undefined) {
@@ -86,7 +86,7 @@ class PblInfiniteScrollDSContext<T, TData = any> {
     if (this.triggerRuntime) {
       this.triggerRuntime.onRenderedDataChanged();
     } else {
-      this.triggerRuntime = PblInfiniteScrollDataSourceTriggerRuntime.tryCreate(this.ds, this.cache, this.options, this.internalHandlers.onTrigger, this.totalLength);
+      this.triggerRuntime = PblInfiniteScrollDataSourceTriggerRuntime.tryCreate(this, this.internalHandlers.onTrigger);
     }
   }
 
@@ -97,6 +97,7 @@ class PblInfiniteScrollDSContext<T, TData = any> {
     const fromRow = this.ds.length;
     const toRow = fromRow + offset;
 
+    (event as PblInfiniteScrollTriggerChangedEvent).totalLength = this.totalLength || 0;
     (event as PblInfiniteScrollTriggerChangedEvent).direction = 1;
     (event as PblInfiniteScrollTriggerChangedEvent).fromRow = fromRow;
     (event as PblInfiniteScrollTriggerChangedEvent).offset = offset + 1;

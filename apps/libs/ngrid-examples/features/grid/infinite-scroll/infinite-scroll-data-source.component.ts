@@ -27,17 +27,25 @@ export class InfiniteScrollDataSourceExample {
   ds = createInfiniteScrollDS<Person>()
     .withInfiniteScrollOptions({
       minBlockSize: 100,
-      initialDataSourceSize: 500,
+      initialDataSourceSize: 100,
     })
     .onTrigger(event => {
       if (!event.isInfiniteScroll) {
-        event.updateTotalLength(1000);
+        event.updateTotalLength(200);
         return this.datasource.getPeople(0, 100);
       } else {
+        console.log(`GET: FROM [${event.fromRow}] - OFFSET [${event.offset}] - TO [${event.toRow}]`);
         this.loading = true;
-        console.log('GET ' + event.toRow);
-        return this.datasource.getPeople(Math.random() * 1000, event.fromRow + event.offset)
-          .then( people => { this.loading = false; console.log('GOT ', event.fromRow, event.offset, event.toRow); return people.slice(event.fromRow, event.fromRow + event.offset); });
+        const total = event.fromRow + event.offset;
+        if (event.isLastBlock && event.totalLength < 1000) {
+          event.updateTotalLength(Math.min(this.ds.length + total * 2, 1000));
+        }
+
+        return this.datasource.getPeople(500 + Math.random() * 1000, total)
+          .then( people => {
+            this.loading = false;
+            console.log(`GOT: FROM [${event.fromRow}] - TO [${total}]`);
+            return people.slice(event.fromRow, total); });
       }
     })
     .create();
